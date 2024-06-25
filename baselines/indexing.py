@@ -1,105 +1,97 @@
-#!/usr/bin/env python3
-import json
-#import gzip
-#import argparse
-
-from preprocess import reduce_articles_to_vocabulary,create_vocabulary,summarize_article
-
-from cherche import data, retrieve, rank, index
+import pyterrier as pt
 import ir_datasets
+import pandas as pd
+import os
+import wn
+import sys
 
-from rank_bm25 import BM25Okapi
-from nltk.tokenize import word_tokenize
+def document_generator(dataset):
+    for doc in dataset.docs_iter():
+        yield {
+            'docno': doc.doc_id,
+            'text': doc.text
+        }
 
-
-"""
-def parse_args():
-    parser = argparse.ArgumentParser(description='Build an index')
-    parser.add_argument('-i', type=str, help='The input directory.', required=True)
-    parser.add_argument('-o', type=str, help='The index will be stored in this directory.', required=True)
+def create_index(dataset, index_path='./index'):
+    pt.init()  # Initialize PyTerrier
     
-    return parser.parse_args()
-"""
-"""
-def create_index(input_directory, output_directory):
+    indexer = pt.IterDictIndexer(index_path, meta=['docno', 'text'], meta_lengths=[20, 4096])
+    index_ref = indexer.index(document_generator(dataset))
+    return index_ref, index_path
+
+def preprocess_query(query):
+    import re
+    # Remove problematic characters
+    query = re.sub(r"[\"']", "", query)
+    # Replace any other problematic characters with a space
+    query = re.sub(r"[^\w\s]", " ", query)
+    # Trim and ensure proper format
+    query = query.strip()
+    return query
+
+def get_synonyms(word):
+    synonyms = set()
+    for syn in wn.synsets(word):
+        for lemma in syn.lemmas():
+            synonyms.add(lemma.name().replace('_', ' '))
+    return synonyms
+
+def expand_query(query):
+    words = query.split()
+    expanded_queries = set()
+    expanded_queries.add(query)
+
+    for word in words:
+        synonyms = get_synonyms(word)
+        for synonym in synonyms:
+            new_query = query.replace(word, synonym)
+            expanded_queries.add(new_query)
+
+    return list(expanded_queries)
+
+def treat_querie(text):
+    from nltk.tokenize import word_tokenize
+    expanded_queries = expand_query(text)
+    final_req=[]
+    for eq in expanded_queries:
+        final_req.append(eq)
+    tokens = set()
+    for sentence in final_req:
+        words = word_tokenize(sentence)
+        tokens.update(words)  # Add tokens to the set
+        sentence = ' '.join(tokens)
+        return sentence
+
+def save_queries(dataset, queries_path='./queries.csv'):
+    queries_list = []
+    for query in dataset.queries_iter():
+        preprocessed_query = preprocess_query(query.text)
+        queries_list.append({'qid': query.query_id, 'query': preprocessed_query})
+
+    queries_df = pd.DataFrame(queries_list)
+    queries_df.to_csv(queries_path, index=False)
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print("Usage: python index.py <input_dataset_path> <output_dir>")
+        sys.exit(1)
     
-    Load the documents from the input directory and build a pseudo index, just a list of document ids.
+    input_dataset_path = sys.argv[1]
+    output_dir = sys.argv[2]
     
-    with gzip.open(input_directory + '/documents.jsonl.gz', 'rt') as documents, gzip.open(output_directory + '/pseudo_index.jsonl.gz', 'wt') as f:
-        for doc in documents:
-            doc = json.loads(doc)
-            f.write(doc['docno'] + '\n')
-            
-    print('Done: Index stored.')
-"""
-
-if __name__ == '__main__':
-    #args = parse_args()
-    #create_index(args.i, args.o)
-    dataset = ir_datasets.load("msmarco-passage/trec-dl-2019/judged")
-    #Preprocess documents#
+    dataset = ir_datasets.load(input_dataset_path)
+    index_ref, index_path = create_index(dataset, index_path=os.path.join(output_dir, 'index'))
     
-    documents = [{'id':doc_id,'article':text} for (doc_id, text) in dataset.docs_iter()]#Test avec [:100]
-    queries = [query.text for query in dataset.queries_iter()]
-    vocabulary = create_vocabulary(queries)
-    print(vocabulary)
-
+    # Save the index reference path to a file
+    index_ref_path = os.path.join(output_dir, 'index_ref.txt')
+    with open(index_ref_path, 'w') as f:
+        f.write(index_path)
     
-    for doc in documents:
-        doc['article'] = summarize_article(doc['article'])
-        print('Summarize article')
-        print(doc)
-        doc['article']=reduce_articles_to_vocabulary(doc['article'], vocabulary)
-        print('Reduce articles to vocabulary')
-        print(doc)
-        #doc['article']=reduce_articles_to_vocabulary(summarize_article(doc['article']), vocabulary)
+    # Save the preprocessed queries
+    queries_path = os.path.join(output_dir, 'queries.csv')
+    save_queries(dataset, queries_path)
+    
+    print(f"Index created and saved at: {index_ref}")
+    print(f"Index reference saved at: {index_ref_path}")
+    print(f"Queries saved at: {queries_path}")
 
-    tokenized_docs = []
-    for doc in documents:
-        doc_id = doc['id']
-        doc_text = doc['article'].lower()  # Convert text to lowercase before tokenization
-        tokenized_text = word_tokenize(doc_text)
-        tokenized_docs.append({'id': doc_id, 'tokens': tokenized_text})
-
-    #INDEXATION
-    bm25 = BM25Okapi([doc['tokens'] for doc in tokenized_docs])
-    '''
-    query = "theory science love"
-    tokenized_query = word_tokenize(query.lower())
-    doc_scores = bm25.get_scores(tokenized_query)
-    N = 500
-    top_n_doc_indices = sorted(range(len(tokenized_docs)), key=lambda i: doc_scores[i], reverse=True)[:N]
-
-    top_n_docs = [tokenized_docs[i] for i in top_n_doc_indices]
-
-    for i, doc in enumerate(top_n_docs):
-        print(f"Document {i + 1} (ID: {doc['id']}): {' '.join(doc['tokens'])}")
-    '''
-    # Nombre de documents à récupérer pour chaque requête
-    N =500  #N(de test)=20
-
-    # Stocker les résultats dans un dictionnaire
-    results = {} 
-
-    for query_id,query in enumerate(queries):
-        tokenized_query = word_tokenize(query.lower())
-        doc_scores = bm25.get_scores(tokenized_query)
-        top_n_doc_indices = sorted(range(len(tokenized_docs)), key=lambda i: doc_scores[i], reverse=True)[:N]
-        #print("TOP N DOC INDICES")
-        #print(top_n_doc_indices)
-        top_n_docs = [tokenized_docs[i]['id'] for i in top_n_doc_indices]
-        results[query_id] = top_n_docs
-        print("QUERY ID, RESULTS[QUERY ID]")
-        print(query_id,results[query_id])
-
-    # Afficher les résultats pour les premières requêtes pour vérification
-    '''
-    for query, top_docs in list(results.items())[:3]:  # Afficher les résultats des 3 premières requêtes
-        print(f"Query: {query}")
-        for i, doc_id in enumerate(top_docs):
-            print(f"Document {i + 1}: {doc_id}")
-            print("\n") 
-    '''
-    # Sauvegarder les   résultats dans un fichier
-    with open('bm25_results.json', 'w') as f:
-        json.dump(results, f)
