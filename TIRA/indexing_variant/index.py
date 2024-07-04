@@ -12,7 +12,7 @@ def document_generator(dataset):
             'text': doc.text
         }
 
-def create_index(dataset, index_path='./msmarco_index'):
+def create_index(dataset, index_path='./index'):
     pt.init()  # Initialize PyTerrier
     
     indexer = pt.IterDictIndexer(index_path, meta=['docno', 'text'], meta_lengths=[20, 4096])
