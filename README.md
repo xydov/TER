@@ -6,11 +6,20 @@ pour les lancer , il suffit de passer l'id du dataset en paramettre et attendre 
 Exemple :
   
 ```
+<<<<<<< HEAD
 python3 my_chercher.py  reuneuir-2024/dl-top-10-docs-20240701-training
+=======
+python3 my_chercher.py dataset_id reuneuir-2024/dl-top-10-docs-20240701-training
+
+>>>>>>> 2fd407ff8409c17e378f3039cd600a56b2bab9ff
 ```
 
 avec plaid-x : 
 
 ```
 python3 plaid-x.py --dataset_id reuneuir-2024/dl-top-1000-docs-20240701-training
+<<<<<<< HEAD
+=======
+
+>>>>>>> 2fd407ff8409c17e378f3039cd600a56b2bab9ff
 ```
