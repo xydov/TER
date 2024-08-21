@@ -7,12 +7,10 @@ Exemple :
   
 ```
 python3 my_chercher.py  reuneuir-2024/dl-top-10-docs-20240701-training
-
 ```
 
 avec plaid-x : 
 
 ```
 python3 plaid-x.py --dataset_id reuneuir-2024/dl-top-1000-docs-20240701-training
-
 ```
