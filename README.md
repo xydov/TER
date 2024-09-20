@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images.png" alt="sigir24" width="400"/>
+  <img src="sig.jpg" alt="sigir24" width="500"/>
 </p>
 
 Ce repertoir contient ma participation à la conference de ReNeuIR@SIGIR2024.
